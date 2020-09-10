@@ -1,30 +1,17 @@
-# vue-simulation
+<!DOCTYPE html>
+<html lang="en">
 
-# 前言
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<style>
+    div {
+        margin: 10px 0px;
+    }
+</style>
 
-这是一个很简单，Vue双向绑定入门级别的实现原理代码，所有代码都放到了<strong>实现vue原理.html</strong>中，没做拆分。代码是看B站的教学视频写的，原代码是vue2基于`Object.defineProperty`的实现，我在上面加了些注解和vue3的实现方式(`Proxy`,`Reflect`)
-
-视频链接： [08-从零实现简易的Vue框架](https://www.bilibili.com/video/BV1oK4y1e7E3?p=8)
-
-学完后受益匪浅，其中设计的知识点如下。**代码其实很简单，重要的是整个代码的设计。**
-
-# 涉及的知识点
-
-* 观察者模式
-* Object.defineProperty 的使用
-* Proxy 生成属性代理的方式
-* Reflect 通过Reflect的方式来管理对象将取代Object的方式
-
-# 界面与要实现的指令
-
-![界面](./image/0910.jpg)
-
-* v-bind
-* v-model
-* {{}}
-* @click
-
-```html
 <body>
     <div id="app">
         <div>下面是一个修改msg数据的Input</div>
@@ -37,31 +24,7 @@
         <div v-bind="username"></div>
     </div>
 </body>
-```
-
-```javascript
-    let app = new Vue({
-        el: "#app",
-        data: {
-            msg: "hello cai",
-            username: '模拟vue',
-        },
-        methods: {
-            changeEvent: function () {
-                console.log(this);
-                this.msg = "hello vue";
-            }
-        },
-        created() {
-            console.log('vue is created');
-        }
-    })
-```
-
-# 实现过程
-
-##### Vue构造函数的定义
-```javascript
+<script>
     class Vue {
         constructor(options) {
             this.$el = document.querySelector(options.el);
@@ -70,7 +33,6 @@
                 options.beforeCreate.bind(this)();
             }
             this.$options = options;
-            //订阅的集合
             this.$watcher = {};
             this.proxyData();
             this.observe();
@@ -85,11 +47,6 @@
                 options.mounted.bind(this)();
             }
         }
-    }
-```
-
-##### proxyData的定义，目的是为vue对象生成属性，让其可通过this[key]进行访问
-```javascript
         proxyData() {
             for (let key in this.$options.data) {
                 // 生成在对象上可以直接通过this.msg来访问的属性
@@ -107,12 +64,30 @@
                 })
             }
         }
-```
-
-##### observe的定义，此处是对this.$options.data中的属性生成一个代理对象
-```javascript
         observe() {
             let that = this;
+
+            // vue2写法
+            // for (let key in this.$options.data) {
+            //     let value = this.$options.data[key];
+            //     Reflect.defineProperty(this.$options.data, key, {
+            //         configurable: false,
+            //         enumerable: true,
+            //         get() {
+            //             //console.log('触发获取事件');
+            //             return value;
+            //         },
+            //         set(val) {
+            //             value = val;
+            //             if (that.$watcher[key]) {
+            //                 that.$watcher[key].forEach((item, index) => {
+            //                     item.update();
+            //                 })
+            //             }
+            //         }
+            //     })
+            // }
+
             // vue3 用上了es6的语法，使用Proxy和Reflect
             const handler = {
                 get(target, key) {
@@ -132,42 +107,6 @@
             }
             this.$options.data = new Proxy(this.$options.data,handler);
         }
-```
-
-结合`proxyData`与`observe`来看你会发现，在对this[key]的修改实际上会因为`this.$options.data[key] = val;`这句而转到代理类中的set方法里。最终修改和获取的是options.data里的数据
-
-##### Watch的定义，
-```javascript
-    class Watch {
-        constructor(vm, key, node, property, nodeType, textContent) {
-            this.vm = vm;
-            this.key = key;
-            this.node = node;
-            //Key的属性名
-            this.property = property;
-            //节点类型
-            this.nodeType = nodeType;
-            //如果是{{}}模式的话，进行设置，因为{{}}模式比较特别，需要保留源文本，进行replace
-            this.textContent = textContent;
-        }
-        update() {
-            if (this.nodeType == 1) {
-                this.node[this.property] = this.vm[this.key];
-            }
-            //对{{}}进行特殊处理
-            if (this.nodeType == 3) {
-                let reg = /\{\{(.*?)\}\}/g;
-                this.node[this.property] = this.textContent.replace(reg, (match, vmKey) => {
-                    vmKey = vmKey.trim();
-                    return this.vm[vmKey];
-                });
-            }
-        }
-    }
-```
-
-##### compile的定义，这个方法比较长，在这个方法中要对node节点进行判断和递归，在判断的过程中判断指令的类型，然后注册订阅者和其属性。
-```javascript
         compile(cNode) {
             //console.log(cNode);
             cNode.forEach((node, index) => {
@@ -181,7 +120,6 @@
                             this.$watcher[vmKey] = [];
                         }
                         this.$watcher[vmKey].push(watch);
-                        //将指令从Html中隐藏
                         node.removeAttribute('v-bind');
                     }
                     if (node.hasAttribute('v-model')) {
@@ -232,4 +170,49 @@
                 }
             })
         }
-```
+    }
+    //观察者模式
+    class Watch {
+        constructor(vm, key, node, property, nodeType, textContent) {
+            this.vm = vm;
+            this.key = key;
+            this.node = node;
+            this.property = property;
+            this.nodeType = nodeType;
+            //如果是{{}}模式的话，进行设置，因为{{}}模式比较特别，需要保留源文本，进行replace
+            this.textContent = textContent;
+        }
+        update() {
+            if (this.nodeType == 1) {
+                this.node[this.property] = this.vm[this.key];
+            }
+            if (this.nodeType == 3) {
+                let reg = /\{\{(.*?)\}\}/g;
+                this.node[this.property] = this.textContent.replace(reg, (match, vmKey) => {
+                    vmKey = vmKey.trim();
+                    return this.vm[vmKey];
+                });
+            }
+        }
+    }
+
+    let app = new Vue({
+        el: "#app",
+        data: {
+            msg: "hello cai",
+            username: '模拟vue',
+        },
+        methods: {
+            changeEvent: function () {
+                console.log(this);
+                this.msg = "hello vue";
+            }
+        },
+        created() {
+            console.log('vue is created');
+        }
+    })
+    console.log(app);
+</script>
+
+</html>
