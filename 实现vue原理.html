@@ -25,6 +25,27 @@
     </div>
 </body>
 <script>
+    //对数组方法进行定义，实现数组方法的原理就是使用原型链把原数组原型替换掉
+    const arrayProto = Array.prototype;
+    const arrayMethods = Object.create(arrayProto);
+    const methodsToPatch = [
+        'push', 'pop', 'shift', 'unshift', 'splice', 'sort', 'reverse'
+    ]
+    methodsToPatch.forEach(method => {
+        const original = arrayProto[method];
+        Object.defineProperty(arrayMethods, method, {
+            enumerable: false,
+            configurable: true,
+            writable: true,
+            value: function (...args) {
+                console.log(`通过 ${method} 进行了修改数组的操作`);
+                console.log(this);
+                const result = original.apply(this, args);
+                return result;
+            }
+        })
+    })
+
     class Vue {
         constructor(options) {
             this.$el = document.querySelector(options.el);
@@ -34,6 +55,7 @@
             }
             this.$options = options;
             this.$watcher = {};
+            //对属性进行定义
             this.proxyData();
             this.observe();
             if (typeof options.created == 'function') {
@@ -49,19 +71,41 @@
         }
         proxyData() {
             for (let key in this.$options.data) {
-                // 生成在对象上可以直接通过this.msg来访问的属性
-                Reflect.defineProperty(this, key, {
-                    //是否可配置
-                    configurable: false,
-                    enumerable: true,
-                    get() {
-                        return this.$options.data[key];
-                    },
-                    set(val) {
-                        console.log(`set ${val}`)
-                        this.$options.data[key] = val;
+                // if(Object.prototype.toString.call(value) === '[object Array]') {
+                //    另一种判断数组写法
+                // }
+                if (Array.isArray(this.$options.data[key])) {
+                    //如果是数组类型就进行原型替换
+                    this.$options.data[key].__proto__ = arrayMethods;
+                    const handler = {
+                        get(target, key) {
+                            return Reflect.get(target, key);
+                        },
+                        set(target, key, value) {
+                            //此处需要注意的是，进行了数组修改后，你会发现set方法调用了两次，一个设置值，一次设置长度
+                            console.log(`key is ${key} set ${value}`)
+                            let temp = Reflect.set(target, key, value);
+                            return temp;
+                        }
                     }
-                })
+                    //这里使用的是vue3的方式，通过proxy代理，实现起来比较简单。
+                    //因为Proxy可以监听数组内元素的变换，这是Object.defineProperty做不到的
+                    this[key] = new Proxy(this.$options.data[key], handler);
+                } else {
+                    // 生成在对象上可以直接通过this.msg来访问的属性
+                    Reflect.defineProperty(this, key, {
+                        //是否可配置
+                        configurable: false,
+                        enumerable: true,
+                        get() {
+                            return this.$options.data[key];
+                        },
+                        set(val) {
+                            console.log(`set ${val}`)
+                            this.$options.data[key] = val;
+                        }
+                    })
+                }
             }
         }
         observe() {
@@ -105,7 +149,7 @@
                     return temp;
                 }
             }
-            this.$options.data = new Proxy(this.$options.data,handler);
+            this.$options.data = new Proxy(this.$options.data, handler);
         }
         compile(cNode) {
             //console.log(cNode);
@@ -201,6 +245,7 @@
         data: {
             msg: "hello cai",
             username: '模拟vue',
+            array: ['cai', 'en', 'cai', 'qi'],
         },
         methods: {
             changeEvent: function () {
