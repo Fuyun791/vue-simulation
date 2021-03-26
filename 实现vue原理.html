@@ -79,6 +79,7 @@
                     this.$options.data[key].__proto__ = arrayMethods;
                     const handler = {
                         get(target, key) {
+                            console.log(`key is ${key}`)
                             return Reflect.get(target, key);
                         },
                         set(target, key, value) {
@@ -182,8 +183,8 @@
                         }
                     }
                     if (node.hasAttribute('@click')) {
+                        let vmKey = node.getAttribute('@click');
                         node.addEventListener('click', (event) => {
-                            let vmKey = node.getAttribute('@click');
                             this.$options.methods[vmKey].bind(this)(event);
                         })
                         node.removeAttribute('@click');
